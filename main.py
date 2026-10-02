@@ -123,36 +123,7 @@ def health():
         "error": str(e)
         }
 
-@app.post("/test-summary")
-def create_test_summary():
-    db=SessionLocal()
-
-    try:
-        test_summary=Summary(
-            source_type="text",
-            source_name="test",
-            summary="This is a test summary.",
-        )
-
-        db.add(test_summary)
-        db.commit()
-        db.refresh(test_summary)
-
-        return{
-            "message":"Test summary created",
-            "id":test_summary.id,
-        }
-
-    except Exception as e:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(e),
-        )
-    finally:
-        db.close()
-
+    
 @app.get("/history")
 def get_history(db: Session= Depends(get_db)):
     summaries=(db.query(Summary).order_by(
@@ -160,5 +131,3 @@ def get_history(db: Session= Depends(get_db)):
     ).all()
     )
     return summaries
-
-    
