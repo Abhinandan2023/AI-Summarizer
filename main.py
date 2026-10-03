@@ -11,7 +11,6 @@ import fitz
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
-import uuid
 
 load_dotenv()
 
@@ -86,6 +85,74 @@ class Summary(Base):
     )
 
     created_at: Mapped[datetime]=mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+class Document(Base):
+    __tablename__="documents"
+
+    id: Mapped[int]=mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+    filename: Mapped[str]=mapped_column(
+        String(500),
+        nullable=False,
+    )
+    page_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    chunk_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+class QuestionAnswer(Base):
+    __tablename__ = "questions_answers"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    document_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    question: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    answer: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    input_tokens: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    output_tokens: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,
         nullable=False,
@@ -219,35 +286,52 @@ def summarize_text(request: SummarizeRequest, db: Session=Depends(get_db)):
     }
 
 @app.post("/upload/pdf")
-async def upload_pdf(file: UploadFile = File(...)):
-    pdf_bytes=await file.read()
-    text, page_count=extract_pdf_text(pdf_bytes)
-    chunks=text_splitter.split_text(text)
-    document_id=str(uuid.uuid4())
-    vectorstore = get_vectorstore(document_id)
+async def upload_pdf(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    pdf_bytes = await file.read()
+
+    text, page_count = extract_pdf_text(pdf_bytes)
+
+    chunks = text_splitter.split_text(text)
+
+    document = Document(
+        filename=file.filename,
+        page_count=page_count,
+        chunk_count=len(chunks),
+    )
+
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+
+    document_id = document.id
+
+    vectorstore = get_vectorstore(str(document_id))
 
     vectorstore.add_texts(
         texts=chunks,
-        metadata=[
+        metadatas=[
             {
-                "source":file.filename,
-                "page_count":page_count,
+                "source": file.filename,
+                "page_count": page_count,
             }
             for _ in chunks
         ],
     )
 
-    return{
+    return {
         "document_id": document_id,
-        "filename":file.filename,
-        "page_count":page_count,
-        "text_length":len(text),
-        "chunk_count":len(chunks),
+        "filename": file.filename,
+        "page_count": page_count,
+        "text_length": len(text),
+        "chunk_count": len(chunks),
         "message": "PDF processed and stored successfully",
     }
-
+    
 @app.post("/ask")
-def ask_question(request: QuestionRequest):
+def ask_question(request: QuestionRequest, db: Session=Depends(get_db)):
 
     vectorstore = get_vectorstore(request.document_id)
     relevant_chunks= vectorstore.similarity_search(
@@ -274,18 +358,47 @@ def ask_question(request: QuestionRequest):
         {request.question}
         """
     )
+    usage=response.usage_metadata
+
+    question_answer=QuestionAnswer(
+        document_id=int(request.document_id),
+        question=request.question,
+        answer=response.content,
+        input_tokens=usage.get("input_tokens"),
+        output_tokens=usage.get("output_tokens"),
+    )
+
+    db.add(question_answer)
+    db.commit()
+    db.refresh(question_answer)
 
     return{
-        "question":request.question,
-        "answer":response.content,
-        "sources":len(relevant_chunks)
+        "id": question_answer.id,
+        "question": question_answer.question,
+        "answer": question_answer.answer,
+        "sources": len(relevant_chunks),
+        "input_tokens": question_answer.input_tokens,
+        "output_tokens": question_answer.output_tokens,
+        "created_at": question_answer.created_at,
     }
 
 @app.post("/summarize/pdf")
-def summarize_pdf(request: PDFSummaryRequest):
-    vectorstore=get_vectorstore(request.document_id)
-    collection_data=vectorstore.get()
-    documents=collection_data["documents"]
+def summarize_pdf(
+    request: PDFSummaryRequest,
+    db: Session = Depends(get_db)
+):
+    document = db.query(Document).filter(
+        Document.id == int(request.document_id)
+    ).first()
+
+    if not document:
+        return {
+            "error": "Document not found"
+        }
+    vectorstore = get_vectorstore(request.document_id)
+
+    collection_data = vectorstore.get()
+    documents = collection_data["documents"]
 
     if not documents:
         return {
@@ -313,8 +426,32 @@ def summarize_pdf(request: PDFSummaryRequest):
         """
     )
 
+    usage = response.usage_metadata
+
+    summary = Summary(
+        source_type="pdf",
+        source_name=document.filename,
+        summary=response.content,
+        page_count=document.page_count,
+        chunk_count=document.chunk_count,
+        input_tokens=usage.get("input_tokens"),
+        output_tokens=usage.get("output_tokens"),
+    )
+
+    db.add(summary)
+    db.commit()
+    db.refresh(summary)
+
     return {
-        "document_id": request.document_id,
-        "summary": response.content,
+        "id": summary.id,
+        "document_id": document.id,
+        "source_type": summary.source_type,
+        "source_name": summary.source_name,
+        "summary": summary.summary,
+        "page_count": summary.page_count,
+        "chunk_count": summary.chunk_count,
+        "input_tokens": summary.input_tokens,
+        "output_tokens": summary.output_tokens,
+        "created_at": summary.created_at,
         "sources": len(documents),
     }
