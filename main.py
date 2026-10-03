@@ -1,10 +1,12 @@
 import os
 from datetime import datetime
 from dotenv import load_dotenv
-from fastapi import FastAPI,HTTPException, Depends
+from fastapi import FastAPI, Depends
 from sqlalchemy import DateTime, Integer, String, Text, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from sqlalchemy.engine import URL
+from langchain_groq import ChatGroq
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -13,6 +15,14 @@ POSTGRES_PORT = os.getenv("POSTGRES_PORT")
 POSTGRES_DB = os.getenv("POSTGRES_DB")
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL")
+
+llm = ChatGroq(
+    model=GROQ_MODEL,
+    api_key=GROQ_API_KEY,
+    temperature=0.3,
+)
 
 DATABASE_URL = URL.create(
     drivername="postgresql+psycopg",
@@ -76,6 +86,9 @@ class Summary(Base):
         nullable=False,
     )
 
+class SummarizeRequest(BaseModel):
+    text: str
+
 engine=create_engine(DATABASE_URL) 
 
 Base.metadata.create_all(bind=engine)
@@ -131,3 +144,39 @@ def get_history(db: Session= Depends(get_db)):
     ).all()
     )
     return summaries
+
+@app.post("/summarize/text")
+def summarize_text(request: SummarizeRequest, db: Session=Depends(get_db)):
+    response=llm.invoke(
+         f"""
+       Summarize the following text clearly and concisely.
+        Provide:
+        1. A short summary
+        2. The key points
+        Text:
+        {request.text}
+        """
+    )
+    usage= response.usage_metadata
+
+    summary=Summary(
+        source_type="text",
+        source_name="Direct Text Input",
+        summary=response.content,
+        input_tokens=usage.get("input_tokens"),
+        output_tokens=usage.get("output_tokens"),
+    )
+
+    db.add(summary)
+    db.commit()
+    db.refresh(summary)
+    return {
+        "id": summary.id,
+        "source_type": summary.source_type,
+        "source_name": summary.source_name,
+        "summary": summary.summary,
+        "input_tokens": summary.input_tokens,
+        "output_tokens": summary.output_tokens,
+        "created_at": summary.created_at,
+        
+    }
