@@ -4,3 +4,8 @@ python-dotenv
 sqlalchemy
 psycopg[binary]
 langchain-groq
+pymupdf
+langchain-text-splitters
+langchain-huggingface
+sentence-transformers
+langchain-chroma

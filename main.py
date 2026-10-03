@@ -1,12 +1,17 @@
 import os
 from datetime import datetime
 from dotenv import load_dotenv
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, UploadFile, File
 from sqlalchemy import DateTime, Integer, String, Text, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from sqlalchemy.engine import URL
 from langchain_groq import ChatGroq
 from pydantic import BaseModel
+import fitz
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+import uuid
 
 load_dotenv()
 
@@ -89,6 +94,13 @@ class Summary(Base):
 class SummarizeRequest(BaseModel):
     text: str
 
+class QuestionRequest(BaseModel):
+    document_id: str
+    question: str
+
+class PDFSummaryRequest(BaseModel):
+    document_id: str
+
 engine=create_engine(DATABASE_URL) 
 
 Base.metadata.create_all(bind=engine)
@@ -106,6 +118,31 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def extract_pdf_text(file):
+    document=fitz.open(stream=file, filetype="pdf")
+    text=""
+    for page in document:
+        text+=page.get_text()
+    page_count=len(document)
+    document.close()
+    return text, page_count
+
+text_splitter=RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200,
+)
+
+embeddings=HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
+
+def get_vectorstore(document_id: str):
+    return Chroma(
+        collection_name=f"document_{document_id}",
+        embedding_function=embeddings,
+        persist_directory="./chroma_db",
+    )
 
 app=FastAPI(
     title="SummarAI",
@@ -179,4 +216,105 @@ def summarize_text(request: SummarizeRequest, db: Session=Depends(get_db)):
         "output_tokens": summary.output_tokens,
         "created_at": summary.created_at,
         
+    }
+
+@app.post("/upload/pdf")
+async def upload_pdf(file: UploadFile = File(...)):
+    pdf_bytes=await file.read()
+    text, page_count=extract_pdf_text(pdf_bytes)
+    chunks=text_splitter.split_text(text)
+    document_id=str(uuid.uuid4())
+    vectorstore = get_vectorstore(document_id)
+
+    vectorstore.add_texts(
+        texts=chunks,
+        metadata=[
+            {
+                "source":file.filename,
+                "page_count":page_count,
+            }
+            for _ in chunks
+        ],
+    )
+
+    return{
+        "document_id": document_id,
+        "filename":file.filename,
+        "page_count":page_count,
+        "text_length":len(text),
+        "chunk_count":len(chunks),
+        "message": "PDF processed and stored successfully",
+    }
+
+@app.post("/ask")
+def ask_question(request: QuestionRequest):
+
+    vectorstore = get_vectorstore(request.document_id)
+    relevant_chunks= vectorstore.similarity_search(
+        request.question,
+        k=4,
+    )
+
+    context="".join(
+        document.page_content for document in relevant_chunks
+    )
+
+    response=llm.invoke(
+         f"""
+        Answer the user's question using only the information
+        provided in the document context below.
+
+        If the answer cannot be found in the context, say:
+        "I could not find the answer in the uploaded document."
+
+        Document context:
+        {context}
+
+        User question:
+        {request.question}
+        """
+    )
+
+    return{
+        "question":request.question,
+        "answer":response.content,
+        "sources":len(relevant_chunks)
+    }
+
+@app.post("/summarize/pdf")
+def summarize_pdf(request: PDFSummaryRequest):
+    vectorstore=get_vectorstore(request.document_id)
+    collection_data=vectorstore.get()
+    documents=collection_data["documents"]
+
+    if not documents:
+        return {
+            "document_id": request.document_id,
+            "summary": "No content found for this document.",
+            "sources": 0,
+        }
+
+    context = "\n\n".join(documents)
+
+    response = llm.invoke(
+        f"""
+        Summarize the following document clearly and accurately.
+
+        Include:
+        - A concise overall summary
+        - The most important points
+        - Important numbers, dates, names, or conditions
+        - Important lists or items mentioned in the document
+
+        Do not invent information that is not present in the document.
+
+        Document:
+        {context}
+        """
+    )
+
+    return {
+        "document_id": request.document_id,
+        "summary": response.content,
+        "sources": len(documents),
     }
