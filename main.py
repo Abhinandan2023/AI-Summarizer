@@ -5,7 +5,7 @@ from fastapi import FastAPI, Depends, UploadFile, File
 from sqlalchemy import DateTime, Integer, String, Text, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from sqlalchemy.engine import URL
-from langchain_groq import ChatGroq
+from langchain_mistralai import ChatMistralAI
 from pydantic import BaseModel
 import pymupdf
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -19,12 +19,12 @@ POSTGRES_PORT = os.getenv("POSTGRES_PORT")
 POSTGRES_DB = os.getenv("POSTGRES_DB")
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL")
 
-llm = ChatGroq(
-    model=GROQ_MODEL,
-    api_key=GROQ_API_KEY,
+llm = ChatMistralAI(
+    model=MISTRAL_MODEL,
+    api_key=MISTRAL_API_KEY,
     temperature=0.3,
 )
 
@@ -47,6 +47,11 @@ class Summary(Base):
         Integer,
         primary_key=True,
         autoincrement=True,
+    )
+
+    document_id: Mapped[int | None] = mapped_column(
+    Integer,
+    nullable=True,
     )
 
     source_type: Mapped[str]=mapped_column(
@@ -242,12 +247,43 @@ def health():
 
     
 @app.get("/history")
-def get_history(db: Session= Depends(get_db)):
-    summaries=(db.query(Summary).order_by(
-        Summary.created_at.desc()
-    ).all()
+def get_history(db: Session = Depends(get_db)):
+
+    documents = (
+        db.query(Document)
+        .order_by(Document.created_at.desc())
+        .all()
     )
-    return summaries
+
+    history = []
+
+    for document in documents:
+
+        summaries = (
+            db.query(Summary)
+            .filter(Summary.document_id == document.id)
+            .order_by(Summary.created_at.desc())
+            .all()
+        )
+
+        questions_answers = (
+            db.query(QuestionAnswer)
+            .filter(QuestionAnswer.document_id == document.id)
+            .order_by(QuestionAnswer.created_at.desc())
+            .all()
+        )
+
+        history.append({
+            "document_id": document.id,
+            "filename": document.filename,
+            "page_count": document.page_count,
+            "chunk_count": document.chunk_count,
+            "created_at": document.created_at,
+            "summaries": summaries,
+            "questions_answers": questions_answers,
+        })
+
+    return history
 
 @app.post("/summarize/text")
 def summarize_text(request: SummarizeRequest, db: Session=Depends(get_db)):
@@ -383,23 +419,21 @@ def ask_question(request: QuestionRequest, db: Session=Depends(get_db)):
     }
 
 @app.post("/summarize/pdf")
-def summarize_pdf(
-    request: PDFSummaryRequest,
-    db: Session = Depends(get_db)
-):
-    document = db.query(Document).filter(
-        Document.id == int(request.document_id)
-    ).first()
+def summarize_pdf(request: PDFSummaryRequest, db: Session = Depends(get_db)):
+    document = (
+        db.query(Document)
+        .filter(Document.id == int(request.document_id))
+        .first()
+    )
 
     if not document:
         return {
             "error": "Document not found"
         }
-    vectorstore = get_vectorstore(request.document_id)
 
+    vectorstore = get_vectorstore(request.document_id)
     collection_data = vectorstore.get()
     documents = collection_data["documents"]
-
     if not documents:
         return {
             "document_id": request.document_id,
@@ -407,35 +441,104 @@ def summarize_pdf(
             "sources": 0,
         }
 
-    context = "\n\n".join(documents)
+    group_size = 12
+    groups = [
+        documents[i:i + group_size]
+        for i in range(0, len(documents), group_size)
+    ]
 
-    response = llm.invoke(
+    intermediate_summaries = []
+    total_input_tokens = 0
+    total_output_tokens = 0
+
+    for group in groups:
+
+        group_context = "\n\n".join(group)
+
+        response = llm.invoke(
+            f"""
+            Summarize this section of a larger document.
+
+            Preserve:
+            - Main ideas
+            - Important concepts
+            - Technical details
+            - Important numbers
+            - Names
+            - Dates
+            - Conditions
+            - Lists
+            - Conclusions
+
+            Do not invent information.
+
+            Section:
+
+            {group_context}
+            """
+        )
+
+        intermediate_summaries.append(
+            response.content
+        )
+
+        usage = response.usage_metadata or {}
+
+        total_input_tokens += usage.get(
+            "input_tokens", 0
+        )
+
+        total_output_tokens += usage.get(
+            "output_tokens", 0
+        )
+
+    combined_summaries = "\n\n".join(
+        intermediate_summaries
+    )
+
+    final_response = llm.invoke(
         f"""
-        Summarize the following document clearly and accurately.
+        Create a final summary of the document
+        using the section summaries below.
 
-        Include:
-        - A concise overall summary
-        - The most important points
-        - Important numbers, dates, names, or conditions
-        - Important lists or items mentioned in the document
+        Provide:
 
-        Do not invent information that is not present in the document.
+        1. Overall summary
+        2. Most important points
+        3. Important concepts
+        4. Important technical details
+        5. Important numbers, names, dates,
+           conditions, lists, or conclusions
 
-        Document:
-        {context}
+        Make the final summary clear and well structured.
+
+        Do not invent information.
+
+        Section summaries:
+
+        {combined_summaries}
         """
     )
 
-    usage = response.usage_metadata
+    final_usage = final_response.usage_metadata or {}
+
+    total_input_tokens += final_usage.get(
+        "input_tokens", 0
+    )
+
+    total_output_tokens += final_usage.get(
+        "output_tokens", 0
+    )
 
     summary = Summary(
+        document_id=document.id,
         source_type="pdf",
         source_name=document.filename,
-        summary=response.content,
+        summary=final_response.content,
         page_count=document.page_count,
         chunk_count=document.chunk_count,
-        input_tokens=usage.get("input_tokens"),
-        output_tokens=usage.get("output_tokens"),
+        input_tokens=total_input_tokens,
+        output_tokens=total_output_tokens,
     )
 
     db.add(summary)
@@ -454,4 +557,48 @@ def summarize_pdf(
         "output_tokens": summary.output_tokens,
         "created_at": summary.created_at,
         "sources": len(documents),
+    }
+
+@app.delete("/documents/{document_id}")
+def delete_document(
+    document_id: int,
+    db: Session = Depends(get_db)
+):
+
+    document = (
+        db.query(Document)
+        .filter(Document.id == document_id)
+        .first()
+    )
+
+    if not document:
+        return {
+            "message": "Document not found"
+        }
+
+    # Delete summaries
+    db.query(Summary).filter(
+        Summary.document_id == document_id
+    ).delete(synchronize_session=False)
+
+    # Delete questions and answers
+    db.query(QuestionAnswer).filter(
+        QuestionAnswer.document_id == document_id
+    ).delete(synchronize_session=False)
+
+    # Delete document record
+    db.delete(document)
+
+    db.commit()
+
+    # Delete Chroma collection
+    try:
+        vectorstore = get_vectorstore(str(document_id))
+        vectorstore.delete_collection()
+    except Exception:
+        pass
+
+    return {
+        "message": "Document and all related history deleted successfully",
+        "document_id": document_id
     }
