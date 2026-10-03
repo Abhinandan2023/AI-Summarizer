@@ -7,7 +7,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker,
 from sqlalchemy.engine import URL
 from langchain_groq import ChatGroq
 from pydantic import BaseModel
-import fitz
+import pymupdf
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
@@ -187,7 +187,7 @@ def get_db():
         db.close()
 
 def extract_pdf_text(file):
-    document=fitz.open(stream=file, filetype="pdf")
+    document = pymupdf.open(stream=file, filetype="pdf")
     text=""
     for page in document:
         text+=page.get_text()
