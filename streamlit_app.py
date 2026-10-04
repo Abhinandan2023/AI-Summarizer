@@ -1,767 +1,920 @@
-import streamlit as st
-import requests
+
 import os
+import requests
+import streamlit as st
 
 # ============================================================
-# Configuration
+# SummarAI - Streamlit Frontend
+# Backend: FastAPI
 # ============================================================
 
-API_URL = os.getenv("API_URL")
+st.set_page_config(
+    page_title="SummarAI",
+    page_icon="✨",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-if "token" not in st.session_state:
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
+
+
+# -----------------------------
+# Styling
+# -----------------------------
+st.markdown(
+    """
+    <style>
+        /* ===== BLACK / DARK UI ===== */
+        .stApp {
+            background: #000000;
+            color: #f5f5f5;
+        }
+
+        .main .block-container {
+            background: #000000;
+        }
+
+        [data-testid="stSidebar"] {
+            background: #050505;
+            border-right: 1px solid #1f1f1f;
+        }
+
+        [data-testid="stSidebar"] * {
+            color: #f5f5f5;
+        }
+
+        /* Text */
+        h1, h2, h3, h4, h5, h6,
+        p, label, span, div {
+            color: inherit;
+        }
+
+        /* Hero */
+        .hero {
+            background: #111111 !important;
+            border: 1px solid #292929;
+            color: #f5f5f5 !important;
+        }
+
+        .hero h1,
+        .hero .brand,
+        .hero p {
+            color: #f5f5f5 !important;
+        }
+
+        .hero p,
+        .tagline,
+        .small-muted,
+        .metric-label {
+            color: #a3a3a3 !important;
+        }
+
+        .hero h1 {
+            color: #ffffff !important;
+        }
+
+        .hero .brand {
+            color: #ffffff !important;
+        }
+
+        /* Cards */
+        .metric-card,
+        .history-card,
+        .chat-answer {
+            background: #111111 !important;
+            border: 1px solid #292929 !important;
+            color: #f5f5f5 !important;
+        }
+
+        /* Streamlit native metric cards */
+        [data-testid="stMetric"] {
+            background: #111111 !important;
+            border: 1px solid #292929 !important;
+            border-radius: 14px !important;
+            padding: 1rem !important;
+        }
+
+        [data-testid="stMetricLabel"] {
+            color: #a3a3a3 !important;
+        }
+
+        [data-testid="stMetricValue"] {
+            color: #ffffff !important;
+        }
+
+        [data-testid="stMetricDelta"] {
+            color: #a3a3a3 !important;
+        }
+
+        .chat-question {
+            background: #181818;
+            border: 1px solid #292929;
+            color: #f5f5f5;
+        }
+
+        /* Inputs */
+        input,
+        textarea,
+        [data-baseweb="select"] > div,
+        [data-testid="stFileUploader"] {
+            background-color: #111111 !important;
+            color: #f5f5f5 !important;
+            border-color: #333333 !important;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+            color: #737373 !important;
+        }
+
+        /* Select dropdown */
+        [data-baseweb="popover"],
+        [role="listbox"] {
+            background: #111111 !important;
+            color: #f5f5f5 !important;
+        }
+
+        /* Tabs */
+        button[data-baseweb="tab"] {
+            color: #a3a3a3 !important;
+        }
+
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: #ffffff !important;
+        }
+
+        /* Expanders */
+        [data-testid="stExpander"] {
+            background: #111111;
+            border: 1px solid #292929;
+        }
+
+        /* Code / pre */
+        code, pre {
+            background: #0d0d0d !important;
+            color: #e5e5e5 !important;
+        }
+
+        .footer {
+            color: #737373;
+        }
+
+        .brand {
+            font-size: 2.2rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 0.1rem;
+        }
+
+        .tagline {
+            color: #6b7280;
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .hero {
+            padding: 1.5rem 1.8rem;
+            border-radius: 18px;
+            background: linear-gradient(135deg, #ffffff, #eef2ff);
+            border: 1px solid #e5e7eb;
+            margin-bottom: 1.2rem;
+        }
+
+        .hero h1 {
+            margin: 0;
+            font-size: 2.2rem;
+        }
+
+        .hero p {
+            color: #6b7280;
+            margin-top: 0.5rem;
+        }
+
+        .metric-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 1rem;
+            min-height: 105px;
+        }
+
+        .metric-label {
+            color: #6b7280;
+            font-size: 0.85rem;
+        }
+
+        .metric-value {
+            font-size: 1.55rem;
+            font-weight: 750;
+            margin-top: 0.25rem;
+        }
+
+        .chat-question {
+            background: #eef2ff;
+            padding: 0.8rem 1rem;
+            border-radius: 12px;
+            margin-top: 1rem;
+        }
+
+        .chat-answer {
+            background: white;
+            border: 1px solid #e5e7eb;
+            padding: 1rem;
+            border-radius: 12px;
+            margin-top: 0.4rem;
+        }
+
+        .history-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 1rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .small-muted {
+            color: #6b7280;
+            font-size: 0.85rem;
+        }
+
+        div[data-testid="stFileUploader"] {
+            background: white;
+            border-radius: 14px;
+        }
+
+        .footer {
+            text-align: center;
+            color: #9ca3af;
+            padding: 2rem 0 1rem 0;
+            font-size: 0.8rem;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# -----------------------------
+# Session state
+# -----------------------------
+defaults = {
+    "token": None,
+    "email": None,
+    "page": "Dashboard",
+    "selected_document": None,
+    "selected_document_name": None,
+    "last_summary": None,
+    "last_qa": None,
+    "history": [],
+}
+
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def api_headers():
+    if not st.session_state.token:
+        return {}
+    return {
+        "Authorization": f"Bearer {st.session_state.token}"
+    }
+
+
+def safe_json(response):
+    try:
+        return response.json()
+    except ValueError:
+        return {}
+
+
+def api_error(response, fallback="Something went wrong."):
+    data = safe_json(response)
+    return data.get("detail") or data.get("error") or f"{fallback} (HTTP {response.status_code})"
+
+
+def get_history():
+    if not st.session_state.token:
+        return []
+
+    try:
+        response = requests.get(
+            f"{API_URL}/history",
+            headers=api_headers(),
+            timeout=60,
+        )
+
+        if response.status_code == 200:
+            return response.json()
+
+        st.error(api_error(response, "Could not load history."))
+        return []
+
+    except requests.RequestException as exc:
+        st.error(f"Could not connect to the backend: {exc}")
+        return []
+
+
+def logout():
     st.session_state.token = None
-
-if "user_email" not in st.session_state:
-    st.session_state.user_email = None
+    st.session_state.email = None
+    st.session_state.selected_document = None
+    st.session_state.selected_document_name = None
+    st.session_state.last_summary = None
+    st.session_state.last_qa = None
+    st.session_state.history = []
+    st.rerun()
 
 
 # ============================================================
 # Authentication
 # ============================================================
+if not st.session_state.token:
+    left, right = st.columns([1.15, 1])
 
-if st.session_state.token is None:
+    with left:
+        st.markdown(
+            """
+            <div class="hero">
+                <div class="brand">✨ SummarAI</div>
+                <h1>Understand documents faster.</h1>
+                <p>
+                    Upload a PDF, generate an AI summary, and ask questions
+                    about the document using RAG.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    st.title("📄 SummarAI")
-    st.subheader("Login to continue")
+        st.markdown("### What you can do")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.info("📄 **PDF Summarization**\n\nTurn long documents into structured summaries.")
+            st.info("💬 **Document Q&A**\n\nAsk questions and get answers grounded in your PDF.")
+        with c2:
+            st.info("📝 **Text Summarization**\n\nPaste text directly and summarize it.")
+            st.info("🗂️ **History**\n\nKeep track of your uploaded documents and answers.")
 
-    auth_mode = st.radio(
-        "Choose an option",
-        ["Login", "Sign Up"],
-        horizontal=True,
-    )
+    with right:
+        login_tab, signup_tab = st.tabs(["🔐 Login", "✨ Create account"])
 
-    email = st.text_input("Email")
-    password = st.text_input(
-        "Password",
-        type="password",
-    )
+        with login_tab:
+            st.subheader("Welcome back")
 
-    if auth_mode == "Login":
-
-        if st.button("Login"):
-
-            response = requests.post(
-                f"{API_URL}/login",
-                data={
-                    "username": email,
-                    "password": password,
-                },
+            login_email = st.text_input(
+                "Email",
+                key="login_email",
+                placeholder="you@example.com",
+            )
+            login_password = st.text_input(
+                "Password",
+                type="password",
+                key="login_password",
             )
 
-            if response.status_code == 200:
-
-                data = response.json()
-
-                st.session_state.token = data["access_token"]
-                st.session_state.user_email = email
-
-                st.success("Login successful!")
-                st.rerun()
-
-            else:
-                st.error(
-                    response.json().get(
-                        "detail",
-                        "Login failed",
-                    )
-                )
-
-    else:
-
-        if st.button("Create Account"):
-
-            response = requests.post(
-                f"{API_URL}/signup",
-                json={
-                    "email": email,
-                    "password": password,
-                },
-            )
-
-            if response.status_code == 200:
-
-                st.success(
-                    "Account created successfully. "
-                    "Please login."
-                )
-
-            else:
-                try:
-                    error_message = response.json().get(
-                    "detail",
-                    "Signup failed",
+            if st.button("Login", type="primary", use_container_width=True):
+                if not login_email.strip() or not login_password:
+                    st.warning("Please enter your email and password.")
+                else:
+                    try:
+                        response = requests.post(
+                            f"{API_URL}/login",
+                            data={
+                                "username": login_email.strip(),
+                                "password": login_password,
+                            },
+                            timeout=60,
                         )
-                except ValueError:
-                    error_message = (
-                    f"Signup failed "
-                    f"(HTTP {response.status_code})"
-                         )
 
-        st.error(error_message)
+                        if response.status_code == 200:
+                            data = safe_json(response)
+                            st.session_state.token = data.get("access_token")
+                            st.session_state.email = login_email.strip()
+                            st.session_state.page = "Dashboard"
 
-    st.stop() 
+                            if st.session_state.token:
+                                st.success("Login successful!")
+                                st.rerun()
+                            else:
+                                st.error("Login succeeded but no access token was returned.")
+                        else:
+                            st.error(api_error(response, "Login failed."))
+
+                    except requests.RequestException as exc:
+                        st.error(f"Could not connect to the backend: {exc}")
+
+        with signup_tab:
+            st.subheader("Create your account")
+
+            signup_email = st.text_input(
+                "Email",
+                key="signup_email",
+                placeholder="you@example.com",
+            )
+            signup_password = st.text_input(
+                "Password",
+                type="password",
+                key="signup_password",
+            )
+            signup_confirm = st.text_input(
+                "Confirm password",
+                type="password",
+                key="signup_confirm",
+            )
+
+            if st.button("Create account", type="primary", use_container_width=True):
+                if not signup_email.strip() or not signup_password:
+                    st.warning("Please fill in all fields.")
+                elif signup_password != signup_confirm:
+                    st.warning("Passwords do not match.")
+                else:
+                    try:
+                        response = requests.post(
+                            f"{API_URL}/signup",
+                            json={
+                                "email": signup_email.strip(),
+                                "password": signup_password,
+                            },
+                            timeout=60,
+                        )
+
+                        if response.status_code == 200:
+                            st.success("Account created. You can now log in.")
+                        else:
+                            st.error(api_error(response, "Signup failed."))
+
+                    except requests.RequestException as exc:
+                        st.error(f"Could not connect to the backend: {exc}")
+
+    st.markdown(
+        '<div class="footer">SummarAI • FastAPI + PostgreSQL + Chroma + Mistral</div>',
+        unsafe_allow_html=True,
+    )
+    st.stop()
+
 
 # ============================================================
-# Logged-in User
+# Sidebar
 # ============================================================
+with st.sidebar:
+    st.markdown("## ✨ SummarAI")
+    st.caption("AI document intelligence")
 
-st.sidebar.write(f"👤 {st.session_state.user_email}")
+    st.divider()
 
-if st.sidebar.button("Logout"):
-    st.session_state.token = None
-    st.session_state.user_email = None
-    st.session_state.pop("document_id", None)
-    st.session_state.pop("uploaded_file_id", None)
-    st.session_state.pop("history", None)
-    st.rerun()  
+    pages = {
+        "🏠 Dashboard": "Dashboard",
+        "📄 Summarize PDF": "Summarize PDF",
+        "💬 Ask Document": "Ask Document",
+        "📝 Summarize Text": "Summarize Text",
+        "🗂️ History": "History",
+    }
+
+    for label, page_name in pages.items():
+        if st.button(
+            label,
+            key=f"nav_{page_name}",
+            use_container_width=True,
+        ):
+            st.session_state.page = page_name
+            st.rerun()
+
+    st.divider()
+
+    st.caption("Signed in as")
+    st.write(st.session_state.email)
+
+    if st.button("Logout", use_container_width=True):
+        logout()
+
+
 # ============================================================
-# Page Configuration
+# Dashboard
 # ============================================================
+if st.session_state.page == "Dashboard":
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="brand">Good to see you 👋</div>
+            <p>
+                Your AI workspace for summarizing documents and getting
+                answers from your own content.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-st.set_page_config(
-    page_title="SummarAI",
-    page_icon="📄",
-    layout="wide"
-)
+    history = get_history()
+    st.session_state.history = history
 
+    document_count = len(history)
+    question_count = sum(len(item.get("questions_answers", [])) for item in history)
+    summary_count = sum(len(item.get("summaries", [])) for item in history)
 
-# ============================================================
-# Header
-# ============================================================
+    m1, m2, m3 = st.columns(3)
 
-st.title("📄 SummarAI")
-st.write("AI-powered document summarization and Q&A")
+    with m1:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">Documents</div>
+                <div class="metric-value">{document_count}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
+    with m2:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">Summaries</div>
+                <div class="metric-value">{summary_count}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-# ============================================================
-# Text Summarizer
-# ============================================================
+    with m3:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">Questions answered</div>
+                <div class="metric-value">{question_count}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-st.subheader("📝 Summarize Text")
+    st.markdown("### 🚀 Start working")
 
-text_input = st.text_area(
-    "Paste your text here",
-    height=250,
-    placeholder="Enter the text you want to summarize..."
-)
+    a, b, c = st.columns(3)
 
-if st.button("Summarize Text"):
+    with a:
+        st.markdown("#### 📄 PDF")
+        st.write("Upload a document and create an AI-generated summary.")
+        if st.button("Summarize a PDF", use_container_width=True):
+            st.session_state.page = "Summarize PDF"
+            st.rerun()
 
-    if not text_input.strip():
-        st.warning("Please enter some text first.")
+    with b:
+        st.markdown("#### 💬 RAG Q&A")
+        st.write("Ask questions using the uploaded document as context.")
+        if st.button("Ask a document", use_container_width=True):
+            st.session_state.page = "Ask Document"
+            st.rerun()
 
+    with c:
+        st.markdown("#### 📝 Text")
+        st.write("Paste text directly and generate a concise summary.")
+        if st.button("Summarize text", use_container_width=True):
+            st.session_state.page = "Summarize Text"
+            st.rerun()
+
+    st.markdown("### Recent documents")
+
+    if not history:
+        st.info("No documents yet. Upload your first PDF to get started.")
     else:
-        response = requests.post(
-            f"{API_URL}/summarize/text",
-            json={
-                "text": text_input
-            },
-            headers={
-                "Authorization": f"Bearer {st.session_state.token}"
-            },
-        )
-
-        if response.status_code == 200:
-
-            data = response.json()
-
-            st.success("Summary generated!")
-
-            st.markdown("### 📄 Summary")
-
-            st.write(
-                data.get(
-                    "summary",
-                    data
+        for item in history[:5]:
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div class="history-card">
+                        <strong>📄 {item.get("filename", "Untitled")}</strong><br>
+                        <span class="small-muted">
+                            {item.get("page_count", 0)} pages •
+                            {item.get("chunk_count", 0)} chunks
+                        </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
-            )
-
-        else:
-
-            st.error(
-                response.json().get(
-                    "detail",
-                    "Text summarization failed."
-                )
-            )
 
 
 # ============================================================
-# PDF Upload
+# PDF upload + summary
 # ============================================================
+elif st.session_state.page == "Summarize PDF":
+    st.title("📄 Summarize PDF")
+    st.caption("Upload a PDF. SummarAI will process it, store its chunks in Chroma, and generate a structured summary.")
 
-uploaded_file = st.file_uploader(
-    "Upload a PDF",
-    type=["pdf"]
-)
+    uploaded_file = st.file_uploader(
+        "Choose a PDF",
+        type=["pdf"],
+        help="Upload a PDF document to summarize.",
+    )
 
+    if uploaded_file is not None:
+        st.success(f"Selected: **{uploaded_file.name}**")
 
-# ============================================================
-# Detect New PDF
-# ============================================================
+        if st.button("Upload & Process PDF", type="primary", use_container_width=True):
+            try:
+                with st.spinner("Uploading and indexing your PDF..."):
+                    response = requests.post(
+                        f"{API_URL}/upload/pdf",
+                        files={
+                            "file": (
+                                uploaded_file.name,
+                                uploaded_file.getvalue(),
+                                "application/pdf",
+                            )
+                        },
+                        headers=api_headers(),
+                        timeout=180,
+                    )
 
-if uploaded_file is not None:
+                if response.status_code == 200:
+                    data = safe_json(response)
+                    st.session_state.selected_document = str(data.get("document_id"))
+                    st.session_state.selected_document_name = data.get(
+                        "filename",
+                        uploaded_file.name,
+                    )
 
-    if (
-        "uploaded_file_id" not in st.session_state
-        or
-        st.session_state.uploaded_file_id
-        != uploaded_file.file_id
-    ):
+                    st.success("PDF processed successfully.")
 
-        # Store current uploaded file ID
-        st.session_state.uploaded_file_id = (
-            uploaded_file.file_id
+                    x, y, z = st.columns(3)
+                    with x:
+                        st.metric("Pages", data.get("page_count", 0))
+                    with y:
+                        st.metric("Chunks", data.get("chunk_count", 0))
+                    with z:
+                        st.metric("Characters", data.get("text_length", 0))
+
+                    st.info(
+                        "Your document is indexed. Click **Generate Summary** below."
+                    )
+                else:
+                    st.error(api_error(response, "PDF upload failed."))
+
+            except requests.RequestException as exc:
+                st.error(f"Could not connect to the backend: {exc}")
+
+    if st.session_state.selected_document:
+        st.divider()
+
+        st.subheader("Generate summary")
+        st.write(
+            f"Document: **{st.session_state.selected_document_name or st.session_state.selected_document}**"
         )
 
-        # Remove previously active document
-        st.session_state.pop(
-            "document_id",
-            None
+        if st.button("✨ Generate Summary", type="primary", use_container_width=True):
+            try:
+                with st.spinner("Reading the document and generating the summary..."):
+                    response = requests.post(
+                        f"{API_URL}/summarize/pdf",
+                        json={
+                            "document_id": st.session_state.selected_document
+                        },
+                        headers=api_headers(),
+                        timeout=300,
+                    )
+
+                if response.status_code == 200:
+                    data = safe_json(response)
+                    st.session_state.last_summary = data
+
+                    st.success("Summary generated successfully.")
+
+                    st.markdown("### 📋 Summary")
+                    st.markdown(data.get("summary", "No summary returned."))
+
+                    x, y, z = st.columns(3)
+                    with x:
+                        st.metric("Pages", data.get("page_count", 0))
+                    with y:
+                        st.metric("Chunks", data.get("chunk_count", 0))
+                    with z:
+                        st.metric("Sources", data.get("sources", 0))
+
+                else:
+                    st.error(api_error(response, "Summary generation failed."))
+
+            except requests.RequestException as exc:
+                st.error(f"Could not connect to the backend: {exc}")
+
+    if st.session_state.last_summary:
+        st.divider()
+        st.subheader("Latest summary")
+        st.markdown(
+            st.session_state.last_summary.get(
+                "summary",
+                "No summary available.",
+            )
         )
 
 
 # ============================================================
-# Process PDF
+# Ask document
 # ============================================================
+elif st.session_state.page == "Ask Document":
+    st.title("💬 Ask Your Document")
+    st.caption("Ask questions about an indexed PDF. Answers are generated using the most relevant document chunks.")
 
-if uploaded_file is not None:
+    history = get_history()
 
-    if st.button("Process PDF"):
-
-        files = {
-            "file": (
-                uploaded_file.name,
-                uploaded_file.getvalue(),
-                "application/pdf"
-            )
+    if not history:
+        st.info("Upload a PDF first from **Summarize PDF**.")
+    else:
+        document_options = {
+            f'{item.get("filename", "Untitled")} (ID: {item.get("document_id")})':
+            str(item.get("document_id"))
+            for item in history
         }
 
-        with st.spinner("Processing PDF..."):
+        selected_label = st.selectbox(
+            "Select a document",
+            list(document_options.keys()),
+        )
+        selected_id = document_options[selected_label]
 
-            try:
+        question = st.text_area(
+            "Your question",
+            placeholder="Example: What are the main conclusions of this document?",
+            height=120,
+        )
 
-                response = requests.post(
-                f"{API_URL}/upload/pdf",
-                files=files,
-                headers={
-                "Authorization": f"Bearer {st.session_state.token}"
-                    },
-                )
-
-            except requests.exceptions.RequestException as e:
-
-                st.error(
-                    "Could not connect to the FastAPI backend."
-                )
-
-                st.code(str(e))
-
-                st.stop()
-
-
-        if response.status_code == 200:
-
-            data = response.json()
-
-            # Store newly created document ID
-            st.session_state.document_id = (
-                data["document_id"]
-            )
-
-            st.success(
-                "PDF processed successfully!"
-            )
-
-            st.write(
-                f"**File:** {data['filename']}"
-            )
-
-            st.write(
-                f"**Pages:** {data['page_count']}"
-            )
-
-            st.write(
-                f"**Chunks:** {data['chunk_count']}"
-            )
-
-        else:
-
-            st.error(
-                f"Failed to process PDF. "
-                f"Status: {response.status_code}"
-            )
-
-            st.code(
-                response.text
-            )
-
-
-# ============================================================
-# Active Document
-# ============================================================
-
-if "document_id" in st.session_state:
-
-    st.divider()
-
-    st.subheader("📄 Active Document")
-
-    st.write(
-        f"Document ID: "
-        f"`{st.session_state.document_id}`"
-    )
-
-
-    # ========================================================
-    # PDF Summary
-    # ========================================================
-
-    st.subheader("📝 Document Summary")
-
-    if st.button("Generate Summary"):
-
-        with st.spinner(
-            "Generating summary..."
-        ):
-
-            try:
-
-                response = requests.post(
-                f"{API_URL}/summarize/pdf",
-                json={
-                "document_id": str(
-                st.session_state.document_id)
-                },
-                headers={
-                "Authorization": f"Bearer {st.session_state.token}"
-                },
-                )
-
-            except requests.exceptions.RequestException as e:
-
-                st.error(
-                    "Could not connect to the FastAPI backend."
-                )
-
-                st.code(str(e))
-
-                st.stop()
-
-
-        if response.status_code == 200:
-
-            data = response.json()
-
-            st.success(
-                "Summary generated!"
-            )
-
-            st.markdown(
-                data["summary"]
-            )
-
-        else:
-
-            st.error(
-                f"Failed to generate summary. "
-                f"Status: {response.status_code}"
-            )
-
-            st.code(
-                response.text
-            )
-
-
-    # ========================================================
-    # PDF Q&A
-    # ========================================================
-
-    st.divider()
-
-    st.subheader("💬 Ask Questions")
-
-    question = st.text_input(
-        "Ask anything about the uploaded PDF"
-    )
-
-    if st.button("Ask Question"):
-
-        if not question.strip():
-
-            st.warning(
-                "Please enter a question."
-            )
-
-        else:
-
-            with st.spinner(
-                "Finding the answer..."
-            ):
-
+        if st.button("Ask", type="primary", use_container_width=True):
+            if not question.strip():
+                st.warning("Please enter a question.")
+            else:
                 try:
-
-                    response = requests.post(
-                    f"{API_URL}/ask",
-                    json={
-                    "document_id": str(
-                     st.session_state.document_id
-                      ),
-                     "question": question
-                      },
-                     headers={
-                    "Authorization": f"Bearer {st.session_state.token}"
-                        },
+                    with st.spinner("Searching the document and generating an answer..."):
+                        response = requests.post(
+                            f"{API_URL}/ask",
+                            json={
+                                "document_id": selected_id,
+                                "question": question.strip(),
+                            },
+                            headers=api_headers(),
+                            timeout=180,
                         )
 
-                except requests.exceptions.RequestException as e:
+                    if response.status_code == 200:
+                        data = safe_json(response)
+                        st.session_state.last_qa = data
 
-                    st.error(
-                        "Could not connect to the FastAPI backend."
+                        st.markdown(
+                            f"""
+                            <div class="chat-question">
+                                <strong>You</strong><br>
+                                {question}
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                        st.markdown("### 🤖 Answer")
+                        st.markdown(
+                            f"""
+                            <div class="chat-answer">
+                                {data.get("answer", "No answer returned.")}
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                        st.caption(
+                            f"Retrieved sources: {data.get('sources', 0)} • "
+                            f"Input tokens: {data.get('input_tokens', 0)} • "
+                            f"Output tokens: {data.get('output_tokens', 0)}"
+                        )
+
+                    else:
+                        st.error(api_error(response, "Question failed."))
+
+                except requests.RequestException as exc:
+                    st.error(f"Could not connect to the backend: {exc}")
+
+
+# ============================================================
+# Text summarization
+# ============================================================
+elif st.session_state.page == "Summarize Text":
+    st.title("📝 Summarize Text")
+    st.caption("Paste any text and let SummarAI create a concise summary with key points.")
+
+    text_input = st.text_area(
+        "Paste your text",
+        height=350,
+        placeholder="Paste an article, notes, meeting transcript, documentation, or any other text here...",
+    )
+
+    if st.button("✨ Summarize Text", type="primary", use_container_width=True):
+        if not text_input.strip():
+            st.warning("Please enter some text first.")
+        else:
+            try:
+                with st.spinner("Generating your summary..."):
+                    response = requests.post(
+                        f"{API_URL}/summarize/text",
+                        json={"text": text_input},
+                        headers=api_headers(),
+                        timeout=180,
                     )
 
-                    st.code(str(e))
+                if response.status_code == 200:
+                    data = safe_json(response)
 
-                    st.stop()
+                    st.success("Summary generated!")
+                    st.markdown("### 📋 Summary")
+                    st.markdown(data.get("summary", "No summary returned."))
 
+                    x, y = st.columns(2)
+                    with x:
+                        st.metric("Input tokens", data.get("input_tokens", 0))
+                    with y:
+                        st.metric("Output tokens", data.get("output_tokens", 0))
 
-            if response.status_code == 200:
+                else:
+                    st.error(api_error(response, "Text summarization failed."))
 
-                data = response.json()
-
-                st.markdown(
-                    "### Answer"
-                )
-
-                st.write(
-                    data["answer"]
-                )
-
-                st.caption(
-                    f"Sources used: "
-                    f"{data.get('sources', 'N/A')}"
-                )
-
-            else:
-
-                st.error(
-                    f"Failed to get an answer. "
-                    f"Status: {response.status_code}"
-                )
-
-                st.code(
-                    response.text
-                )
+            except requests.RequestException as exc:
+                st.error(f"Could not connect to the backend: {exc}")
 
 
 # ============================================================
 # History
 # ============================================================
+elif st.session_state.page == "History":
+    st.title("🗂️ History")
+    st.caption("Your uploaded documents, generated summaries, and previous questions.")
 
-st.divider()
-
-st.subheader("📚 History")
-
-
-# ------------------------------------------------------------
-# Load History
-# ------------------------------------------------------------
-
-if st.button("View History"):
-
-    with st.spinner(
-        "Loading history..."
-    ):
-
-        try:
-
-            response = requests.get(
-            f"{API_URL}/history",
-            headers={
-            "Authorization": f"Bearer {st.session_state.token}"
-            },
-            )
-
-        except requests.exceptions.RequestException as e:
-
-            st.error(
-                "Could not connect to the FastAPI backend."
-            )
-
-            st.code(str(e))
-
-            st.stop()
-
-
-    if response.status_code == 200:
-
-        # Store latest history in session state
-        st.session_state.history = response.json()
-
-    else:
-
-        st.error(
-            f"Failed to load history. "
-            f"Status: {response.status_code}"
-        )
-
-        st.code(
-            response.text
-        )
-
-
-# ------------------------------------------------------------
-# Display History
-# ------------------------------------------------------------
-
-if "history" in st.session_state:
-
-    history = st.session_state.history
-
-
-    # --------------------------------------------------------
-    # No History
-    # --------------------------------------------------------
+    history = get_history()
+    st.session_state.history = history
 
     if not history:
-
-        st.info(
-            "No document history found."
-        )
-
-
-    # --------------------------------------------------------
-    # Documents
-    # --------------------------------------------------------
-
+        st.info("No document history yet.")
     else:
-
-        for document in history:
-
-            document_id = document["document_id"]
-
-
-            # =================================================
-            # Document Header
-            # =================================================
-
-            col1, col2 = st.columns(
-                [6, 1]
-            )
-
-
-            # -------------------------------------------------
-            # Document Information
-            # -------------------------------------------------
-
-            with col1:
-
-                st.markdown(
-                    f"### 📄 {document['filename']}"
-                )
-
-                st.caption(
-                    f"Document ID: {document_id} | "
-                    f"Pages: {document['page_count']} | "
-                    f"Chunks: {document['chunk_count']}"
-                )
-
-
-            # -------------------------------------------------
-            # Delete Button
-            # -------------------------------------------------
-
-            with col2:
-
-                delete_clicked = st.button(
-                    "🗑 Delete",
-                    key=f"delete_{document_id}"
-                )
-
-
-            # =================================================
-            # Delete Document
-            # =================================================
-
-            if delete_clicked:
-
-                with st.spinner(
-                    "Deleting document..."
-                ):
-
-                    try:
-
-                        delete_response = requests.delete(
-                        f"{API_URL}/documents/"
-                        f"{document_id}",
-                         headers={
-                        "Authorization": f"Bearer {st.session_state.token}"
-                        },
-                        )
-
-                    except requests.exceptions.RequestException as e:
-
-                        st.error(
-                            "Could not connect to the FastAPI backend."
-                        )
-
-                        st.code(str(e))
-
-                        st.stop()
-
-
-                # ------------------------------------------------
-                # Delete Successful
-                # ------------------------------------------------
-
-                if delete_response.status_code == 200:
-
-                    # Clear active document if the deleted
-                    # document is currently active
-                    if (
-                        "document_id"
-                        in st.session_state
-                        and
-                        st.session_state.document_id
-                        == document_id
-                    ):
-
-                        st.session_state.pop(
-                            "document_id",
-                            None
-                        )
-
-                        st.session_state.pop(
-                            "uploaded_file_id",
-                            None
-                        )
-
-
-                    # ------------------------------------------------
-                    # IMPORTANT:
-                    # Remove deleted document from local history
-                    # before rerun.
-                    # ------------------------------------------------
-
-                    st.session_state.history = [
-                        item
-                        for item
-                        in st.session_state.history
-                        if item["document_id"]
-                        != document_id
-                    ]
-
-
-                    st.success(
-                        f"{document['filename']} "
-                        "deleted successfully."
-                    )
-
-
-                    # ------------------------------------------------
-                    # Rerun Streamlit
-                    # ------------------------------------------------
-
-                    st.rerun()
-
-
-                # ------------------------------------------------
-                # Delete Failed
-                # ------------------------------------------------
-
-                else:
-
-                    st.error(
-                        f"Failed to delete document. "
-                        f"Status: "
-                        f"{delete_response.status_code}"
-                    )
-
-                    st.code(
-                        delete_response.text
-                    )
-
-
-            # =================================================
-            # Document Details
-            # =================================================
+        for item in history:
+            document_id = item.get("document_id")
+            filename = item.get("filename", "Untitled")
+            page_count = item.get("page_count", 0)
+            chunk_count = item.get("chunk_count", 0)
 
             with st.expander(
-                "View document details"
+                f"📄 {filename}  •  {page_count} pages  •  {chunk_count} chunks"
             ):
+                summaries = item.get("summaries", [])
+                questions = item.get("questions_answers", [])
 
-
-                # =============================================
-                # Summaries
-                # =============================================
-
-                st.markdown(
-                    "### 📝 Summaries"
-                )
-
-                if document["summaries"]:
-
-                    for summary in document[
-                        "summaries"
-                    ]:
-
-                        st.markdown(
-                            summary["summary"]
-                        )
-
+                if summaries:
+                    st.markdown("### 📋 Summaries")
+                    for summary in summaries:
+                        st.markdown(summary.get("summary", "No summary available."))
                         st.caption(
-                            f"Input tokens: "
-                            f"{summary.get('input_tokens', 'N/A')} | "
-                            f"Output tokens: "
-                            f"{summary.get('output_tokens', 'N/A')}"
+                            f"Created: {summary.get('created_at', '')} • "
+                            f"Input tokens: {summary.get('input_tokens', 0)} • "
+                            f"Output tokens: {summary.get('output_tokens', 0)}"
                         )
-
                         st.divider()
 
-                else:
-
-                    st.info(
-                        "No summary generated."
-                    )
-
-
-                # =============================================
-                # Questions & Answers
-                # =============================================
-
-                st.markdown(
-                    "### 💬 Questions & Answers"
-                )
-
-                if document[
-                    "questions_answers"
-                ]:
-
-                    for qa in document[
-                        "questions_answers"
-                    ]:
-
+                if questions:
+                    st.markdown("### 💬 Questions & Answers")
+                    for qa in questions:
                         st.markdown(
-                            f"**Q:** "
-                            f"{qa['question']}"
+                            f"**Q:** {qa.get('question', '')}"
                         )
-
-                        st.write(
-                            f"**A:** "
-                            f"{qa['answer']}"
+                        st.markdown(
+                            f"**A:** {qa.get('answer', '')}"
                         )
-
-                        st.caption(
-                            f"Input tokens: "
-                            f"{qa.get('input_tokens', 'N/A')} | "
-                            f"Output tokens: "
-                            f"{qa.get('output_tokens', 'N/A')}"
-                        )
-
                         st.divider()
 
-                else:
+                if not summaries and not questions:
+                    st.caption("No summary or questions have been recorded yet.")
 
-                    st.info(
-                        "No questions asked."
-                    )
+                if st.button(
+                    "🗑️ Delete document",
+                    key=f"delete_{document_id}",
+                    type="secondary",
+                ):
+                    try:
+                        response = requests.delete(
+                            f"{API_URL}/documents/{document_id}",
+                            headers=api_headers(),
+                            timeout=120,
+                        )
+
+                        if response.status_code == 200:
+                            st.success("Document and related history deleted.")
+                            st.rerun()
+                        else:
+                            st.error(api_error(response, "Delete failed."))
+
+                    except requests.RequestException as exc:
+                        st.error(f"Could not connect to the backend: {exc}")
+
+
+# ============================================================
+# Footer
+# ============================================================
+st.markdown(
+    '<div class="footer">SummarAI • AI-powered document intelligence</div>',
+    unsafe_allow_html=True,
+)
