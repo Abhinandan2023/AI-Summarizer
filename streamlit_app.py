@@ -24,229 +24,84 @@ API_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
 st.markdown(
     """
     <style>
-        /* ===== BLACK / DARK UI ===== */
-        .stApp {
-            background: #000000;
-            color: #f5f5f5;
-        }
-
-        .main .block-container {
-            background: #000000;
-        }
-
-        [data-testid="stSidebar"] {
-            background: #050505;
-            border-right: 1px solid #1f1f1f;
-        }
-
-        [data-testid="stSidebar"] * {
-            color: #f5f5f5;
-        }
-
-        /* Text */
-        h1, h2, h3, h4, h5, h6,
-        p, label, span, div {
-            color: inherit;
-        }
-
-        /* Hero */
-        .hero {
-            background: #111111 !important;
-            border: 1px solid #292929;
+        html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"],
+        .stApp, .main, .main .block-container {
+            background: #000000 !important;
             color: #f5f5f5 !important;
         }
-
-        .hero h1,
-        .hero .brand,
-        .hero p {
-            color: #f5f5f5 !important;
-        }
-
-        .hero p,
-        .tagline,
-        .small-muted,
-        .metric-label {
-            color: #a3a3a3 !important;
-        }
-
-        .hero h1 {
-            color: #ffffff !important;
-        }
-
-        .hero .brand {
-            color: #ffffff !important;
-        }
-
-        /* Cards */
-        .metric-card,
-        .history-card,
-        .chat-answer {
-            background: #111111 !important;
-            border: 1px solid #292929 !important;
-            color: #f5f5f5 !important;
-        }
-
-        /* Streamlit native metric cards */
-        [data-testid="stMetric"] {
-            background: #111111 !important;
-            border: 1px solid #292929 !important;
-            border-radius: 14px !important;
-            padding: 1rem !important;
-        }
-
-        [data-testid="stMetricLabel"] {
-            color: #a3a3a3 !important;
-        }
-
-        [data-testid="stMetricValue"] {
-            color: #ffffff !important;
-        }
-
-        [data-testid="stMetricDelta"] {
-            color: #a3a3a3 !important;
-        }
-
-        .chat-question {
-            background: #181818;
-            border: 1px solid #292929;
-            color: #f5f5f5;
-        }
-
-        /* Inputs */
-        input,
-        textarea,
-        [data-baseweb="select"] > div,
-        [data-testid="stFileUploader"] {
-            background-color: #111111 !important;
-            color: #f5f5f5 !important;
-            border-color: #333333 !important;
-        }
-
-        input::placeholder,
-        textarea::placeholder {
-            color: #737373 !important;
-        }
-
-        /* Select dropdown */
-        [data-baseweb="popover"],
-        [role="listbox"] {
-            background: #111111 !important;
-            color: #f5f5f5 !important;
-        }
-
-        /* Tabs */
-        button[data-baseweb="tab"] {
-            color: #a3a3a3 !important;
-        }
-
-        button[data-baseweb="tab"][aria-selected="true"] {
-            color: #ffffff !important;
-        }
-
-        /* Expanders */
-        [data-testid="stExpander"] {
-            background: #111111;
-            border: 1px solid #292929;
-        }
-
-        /* Code / pre */
-        code, pre {
-            background: #0d0d0d !important;
-            color: #e5e5e5 !important;
-        }
-
-        .footer {
-            color: #737373;
-        }
-
-        .brand {
-            font-size: 2.2rem;
-            font-weight: 800;
-            letter-spacing: -1px;
-            margin-bottom: 0.1rem;
-        }
-
-        .tagline {
-            color: #6b7280;
-            font-size: 1rem;
-            margin-bottom: 1.5rem;
-        }
+        .main .block-container { max-width: 1400px; padding-top: 2rem; padding-bottom: 2rem; }
+        [data-testid="stSidebar"], [data-testid="stSidebar"] > div { background: #050505 !important; border-right: 1px solid #1f1f1f !important; }
+        [data-testid="stSidebar"] * { color: #f5f5f5 !important; }
+        h1,h2,h3,h4,h5,h6,p,label,span,div { color: inherit; }
 
         .hero {
-            padding: 1.5rem 1.8rem;
-            border-radius: 18px;
-            background: linear-gradient(135deg, #ffffff, #eef2ff);
-            border: 1px solid #e5e7eb;
-            margin-bottom: 1.2rem;
+            background: #111111 !important; border: 1px solid #292929 !important;
+            color: #f5f5f5 !important; padding: 1.5rem 1.8rem;
+            border-radius: 18px; margin-bottom: 1.2rem;
+        }
+        .hero h1,.hero .brand { color:#fff !important; }
+        .hero p,.tagline,.small-muted,.metric-label { color:#a3a3a3 !important; }
+        .brand { font-size:2.2rem; font-weight:800; letter-spacing:-1px; margin-bottom:.1rem; }
+
+        .metric-card,.history-card,.chat-answer {
+            background:#111 !important; border:1px solid #292929 !important;
+            color:#f5f5f5 !important; border-radius:14px;
+        }
+        .metric-card { padding:1rem; min-height:105px; }
+        .metric-label { font-size:.85rem; }
+        .metric-value { color:#fff !important; font-size:1.55rem; font-weight:750; margin-top:.25rem; }
+        .history-card { padding:1rem; margin-bottom:.8rem; }
+        .chat-question { background:#181818 !important; border:1px solid #292929 !important; color:#f5f5f5 !important; padding:.8rem 1rem; border-radius:12px; margin-top:1rem; }
+        .chat-answer { padding:1rem; margin-top:.4rem; }
+
+        [data-testid="stMetric"] { background:#111 !important; border:1px solid #292929 !important; border-radius:14px !important; padding:1rem !important; }
+        [data-testid="stMetricLabel"] { color:#a3a3a3 !important; }
+        [data-testid="stMetricValue"] { color:#fff !important; }
+        [data-testid="stMetricDelta"] { color:#a3a3a3 !important; }
+
+        input,textarea,[data-baseweb="select"] > div,[data-testid="stFileUploader"] {
+            background:#111 !important; color:#f5f5f5 !important; border-color:#333 !important;
+        }
+        input::placeholder,textarea::placeholder { color:#737373 !important; }
+        [data-baseweb="popover"],[role="listbox"],[data-baseweb="menu"],[role="option"] { background:#111 !important; color:#f5f5f5 !important; }
+        [role="option"]:hover { background:#222 !important; }
+        [data-testid="stFileUploader"],[data-testid="stFileUploader"] section,[data-testid="stFileUploaderDropzone"] { background:#111 !important; border-color:#333 !important; }
+        [data-testid="stFileUploader"] small,[data-testid="stFileUploader"] span { color:#d4d4d4 !important; }
+
+        button[data-baseweb="tab"] { color:#a3a3a3 !important; }
+        button[data-baseweb="tab"][aria-selected="true"] { color:#fff !important; }
+        [data-testid="stExpander"] { background:#111 !important; border:1px solid #292929 !important; }
+        [data-testid="stExpander"] summary,[data-testid="stExpander"] summary * { color:#f5f5f5 !important; }
+
+        .stButton > button { background:#111 !important; color:#f5f5f5 !important; border:1px solid #333 !important; border-radius:10px !important; }
+        .stButton > button:hover { background:#1c1c1c !important; border-color:#555 !important; }
+        .stButton > button[kind="primary"] { background:#fff !important; color:#000 !important; border-color:#fff !important; }
+        .stButton > button[kind="primary"]:hover { background:#e5e5e5 !important; color:#000 !important; }
+
+        [data-testid="stAlert"] { background:#111 !important; color:#f5f5f5 !important; border-color:#333 !important; }
+        code,pre { background:#0d0d0d !important; color:#e5e5e5 !important; }
+        .footer { text-align:center; color:#737373 !important; padding:2rem 0 1rem; font-size:.8rem; }
+
+        @media (max-width:768px) {
+            .main .block-container { padding:1rem .75rem 2rem !important; }
+            .hero { padding:1.15rem !important; border-radius:14px !important; }
+            .hero h1 { font-size:1.55rem !important; line-height:1.2 !important; }
+            .brand { font-size:1.75rem !important; }
+            .hero p { font-size:.9rem !important; }
+            .metric-card { min-height:auto !important; padding:.8rem !important; }
+            .metric-value { font-size:1.3rem !important; }
+            [data-testid="stMetric"] { padding:.75rem !important; }
+            [data-testid="stMetricLabel"] { font-size:.75rem !important; }
+            [data-testid="stMetricValue"] { font-size:1.25rem !important; }
+            input,textarea { font-size:16px !important; }
+            .stButton > button { min-height:42px !important; }
+            .history-card,.chat-answer,.chat-question { padding:.8rem !important; }
+            [data-testid="stVerticalBlock"],[data-testid="stHorizontalBlock"],[data-testid="column"],[data-testid="stForm"],[data-testid="stMarkdownContainer"] { background:transparent !important; }
         }
 
-        .hero h1 {
-            margin: 0;
-            font-size: 2.2rem;
-        }
-
-        .hero p {
-            color: #6b7280;
-            margin-top: 0.5rem;
-        }
-
-        .metric-card {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 14px;
-            padding: 1rem;
-            min-height: 105px;
-        }
-
-        .metric-label {
-            color: #6b7280;
-            font-size: 0.85rem;
-        }
-
-        .metric-value {
-            font-size: 1.55rem;
-            font-weight: 750;
-            margin-top: 0.25rem;
-        }
-
-        .chat-question {
-            background: #eef2ff;
-            padding: 0.8rem 1rem;
-            border-radius: 12px;
-            margin-top: 1rem;
-        }
-
-        .chat-answer {
-            background: white;
-            border: 1px solid #e5e7eb;
-            padding: 1rem;
-            border-radius: 12px;
-            margin-top: 0.4rem;
-        }
-
-        .history-card {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 14px;
-            padding: 1rem;
-            margin-bottom: 0.8rem;
-        }
-
-        .small-muted {
-            color: #6b7280;
-            font-size: 0.85rem;
-        }
-
-        div[data-testid="stFileUploader"] {
-            background: white;
-            border-radius: 14px;
-        }
-
-        .footer {
-            text-align: center;
-            color: #9ca3af;
-            padding: 2rem 0 1rem 0;
-            font-size: 0.8rem;
+        @media (prefers-color-scheme:light) {
+            html,body,[data-testid="stAppViewContainer"],[data-testid="stApp"],.main,.main .block-container { background:#000 !important; color:#f5f5f5 !important; }
+            [data-testid="stSidebar"] { background:#050505 !important; }
         }
     </style>
     """,
