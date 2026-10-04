@@ -97,7 +97,7 @@ if st.session_state.token is None:
                     f"(HTTP {response.status_code})"
                          )
 
-    st.error(error_message)
+        st.error(error_message)
 
     st.stop() 
 
