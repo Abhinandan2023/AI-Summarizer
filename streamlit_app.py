@@ -554,16 +554,6 @@ elif st.session_state.page == "Summarize PDF":
             except requests.RequestException as exc:
                 st.error(f"Could not connect to the backend: {exc}")
 
-    if st.session_state.last_summary:
-        st.divider()
-        st.subheader("Latest summary")
-        st.markdown(
-            st.session_state.last_summary.get(
-                "summary",
-                "No summary available.",
-            )
-        )
-
 
 # ============================================================
 # Ask document
