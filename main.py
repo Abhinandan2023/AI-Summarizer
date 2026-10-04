@@ -724,6 +724,7 @@ def summarize_pdf(request: PDFSummaryRequest, db: Session = Depends(get_db),
     )
 
     summary = Summary(
+        user_id=current_user.id,
         document_id=document.id,
         source_type="pdf",
         source_name=document.filename,
