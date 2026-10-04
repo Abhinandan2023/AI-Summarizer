@@ -9,8 +9,8 @@ from langchain_mistralai import ChatMistralAI
 from pydantic import BaseModel
 import pymupdf
 import chromadb
+from langchain_mistralai import MistralAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
 load_dotenv()
@@ -216,8 +216,9 @@ text_splitter=RecursiveCharacterTextSplitter(
     chunk_overlap=200,
 )
 
-embeddings=HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
+embeddings = MistralAIEmbeddings(
+    model="mistral-embed",
+    api_key=MISTRAL_API_KEY,
 )
 
 def get_vectorstore(document_id: str):

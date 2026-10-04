@@ -6,8 +6,6 @@ psycopg[binary]
 langchain-mistralai
 pymupdf
 langchain-text-splitters
-langchain-huggingface
-sentence-transformers
 langchain-chroma
 streamlit
 requests
