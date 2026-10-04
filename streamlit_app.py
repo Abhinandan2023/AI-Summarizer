@@ -90,12 +90,12 @@ if st.session_state.token is None:
                     error_message = response.json().get(
                     "detail",
                     "Signup failed",
-                     )
+                        )
                 except ValueError:
                     error_message = (
                     f"Signup failed "
                     f"(HTTP {response.status_code})"
-                    )
+                         )
 
     st.error(error_message)
 
