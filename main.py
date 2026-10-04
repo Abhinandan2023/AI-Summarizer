@@ -8,6 +8,7 @@ from sqlalchemy.engine import URL
 from langchain_mistralai import ChatMistralAI
 from pydantic import BaseModel
 import pymupdf
+import chromadb
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
@@ -21,6 +22,16 @@ POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL")
+CHROMA_API_KEY = os.getenv("CHROMA_API_KEY")
+CHROMA_TENANT = os.getenv("CHROMA_TENANT")
+CHROMA_DATABASE = os.getenv("CHROMA_DATABASE")
+CHROMA_HOST = os.getenv("CHROMA_HOST")
+
+chroma_client = chromadb.CloudClient( 
+    api_key=CHROMA_API_KEY,
+    tenant=CHROMA_TENANT,
+    database=CHROMA_DATABASE,
+)
 
 llm = ChatMistralAI(
     model=MISTRAL_MODEL,
@@ -211,9 +222,9 @@ embeddings=HuggingFaceEmbeddings(
 
 def get_vectorstore(document_id: str):
     return Chroma(
+        client=chroma_client,
         collection_name=f"document_{document_id}",
         embedding_function=embeddings,
-        persist_directory="./chroma_db",
     )
 
 app=FastAPI(
@@ -560,11 +571,7 @@ def summarize_pdf(request: PDFSummaryRequest, db: Session = Depends(get_db)):
     }
 
 @app.delete("/documents/{document_id}")
-def delete_document(
-    document_id: int,
-    db: Session = Depends(get_db)
-):
-
+def delete_document(document_id: int, db: Session = Depends(get_db)):
     document = (
         db.query(Document)
         .filter(Document.id == document_id)
@@ -576,22 +583,17 @@ def delete_document(
             "message": "Document not found"
         }
 
-    # Delete summaries
     db.query(Summary).filter(
         Summary.document_id == document_id
     ).delete(synchronize_session=False)
 
-    # Delete questions and answers
     db.query(QuestionAnswer).filter(
         QuestionAnswer.document_id == document_id
     ).delete(synchronize_session=False)
 
-    # Delete document record
     db.delete(document)
-
     db.commit()
 
-    # Delete Chroma collection
     try:
         vectorstore = get_vectorstore(str(document_id))
         vectorstore.delete_collection()
@@ -602,3 +604,4 @@ def delete_document(
         "message": "Document and all related history deleted successfully",
         "document_id": document_id
     }
+

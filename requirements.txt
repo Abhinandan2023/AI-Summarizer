@@ -9,3 +9,5 @@ langchain-text-splitters
 langchain-huggingface
 sentence-transformers
 langchain-chroma
+streamlit
+requests
