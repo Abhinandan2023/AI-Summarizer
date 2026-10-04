@@ -2,16 +2,112 @@ import streamlit as st
 import requests
 import os
 
-
-
-
 # ============================================================
 # Configuration
 # ============================================================
 
 API_URL = os.getenv("API_URL")
 
+if "token" not in st.session_state:
+    st.session_state.token = None
 
+if "user_email" not in st.session_state:
+    st.session_state.user_email = None
+
+
+# ============================================================
+# Authentication
+# ============================================================
+
+if st.session_state.token is None:
+
+    st.title("📄 SummarAI")
+    st.subheader("Login to continue")
+
+    auth_mode = st.radio(
+        "Choose an option",
+        ["Login", "Sign Up"],
+        horizontal=True,
+    )
+
+    email = st.text_input("Email")
+    password = st.text_input(
+        "Password",
+        type="password",
+    )
+
+    if auth_mode == "Login":
+
+        if st.button("Login"):
+
+            response = requests.post(
+                f"{API_URL}/login",
+                data={
+                    "username": email,
+                    "password": password,
+                },
+            )
+
+            if response.status_code == 200:
+
+                data = response.json()
+
+                st.session_state.token = data["access_token"]
+                st.session_state.user_email = email
+
+                st.success("Login successful!")
+                st.rerun()
+
+            else:
+                st.error(
+                    response.json().get(
+                        "detail",
+                        "Login failed",
+                    )
+                )
+
+    else:
+
+        if st.button("Create Account"):
+
+            response = requests.post(
+                f"{API_URL}/signup",
+                json={
+                    "email": email,
+                    "password": password,
+                },
+            )
+
+            if response.status_code == 200:
+
+                st.success(
+                    "Account created successfully. "
+                    "Please login."
+                )
+
+            else:
+                st.error(
+                    response.json().get(
+                        "detail",
+                        "Signup failed",
+                    )
+                )
+
+    st.stop() 
+
+# ============================================================
+# Logged-in User
+# ============================================================
+
+st.sidebar.write(f"👤 {st.session_state.user_email}")
+
+if st.sidebar.button("Logout"):
+    st.session_state.token = None
+    st.session_state.user_email = None
+    st.session_state.pop("document_id", None)
+    st.session_state.pop("uploaded_file_id", None)
+    st.session_state.pop("history", None)
+    st.rerun()  
 # ============================================================
 # Page Configuration
 # ============================================================
@@ -29,6 +125,59 @@ st.set_page_config(
 
 st.title("📄 SummarAI")
 st.write("AI-powered document summarization and Q&A")
+
+
+# ============================================================
+# Text Summarizer
+# ============================================================
+
+st.subheader("📝 Summarize Text")
+
+text_input = st.text_area(
+    "Paste your text here",
+    height=250,
+    placeholder="Enter the text you want to summarize..."
+)
+
+if st.button("Summarize Text"):
+
+    if not text_input.strip():
+        st.warning("Please enter some text first.")
+
+    else:
+        response = requests.post(
+            f"{API_URL}/summarize/text",
+            json={
+                "text": text_input
+            },
+            headers={
+                "Authorization": f"Bearer {st.session_state.token}"
+            },
+        )
+
+        if response.status_code == 200:
+
+            data = response.json()
+
+            st.success("Summary generated!")
+
+            st.markdown("### 📄 Summary")
+
+            st.write(
+                data.get(
+                    "summary",
+                    data
+                )
+            )
+
+        else:
+
+            st.error(
+                response.json().get(
+                    "detail",
+                    "Text summarization failed."
+                )
+            )
 
 
 # ============================================================
@@ -87,8 +236,11 @@ if uploaded_file is not None:
             try:
 
                 response = requests.post(
-                    f"{API_URL}/upload/pdf",
-                    files=files
+                f"{API_URL}/upload/pdf",
+                files=files,
+                headers={
+                "Authorization": f"Bearer {st.session_state.token}"
+                    },
                 )
 
             except requests.exceptions.RequestException as e:
@@ -170,12 +322,14 @@ if "document_id" in st.session_state:
             try:
 
                 response = requests.post(
-                    f"{API_URL}/summarize/pdf",
-                    json={
-                        "document_id": str(
-                            st.session_state.document_id
-                        )
-                    }
+                f"{API_URL}/summarize/pdf",
+                json={
+                "document_id": str(
+                st.session_state.document_id)
+                },
+                headers={
+                "Authorization": f"Bearer {st.session_state.token}"
+                },
                 )
 
             except requests.exceptions.RequestException as e:
@@ -242,14 +396,17 @@ if "document_id" in st.session_state:
                 try:
 
                     response = requests.post(
-                        f"{API_URL}/ask",
-                        json={
-                            "document_id": str(
-                                st.session_state.document_id
-                            ),
-                            "question": question
-                        }
-                    )
+                    f"{API_URL}/ask",
+                    json={
+                    "document_id": str(
+                     st.session_state.document_id
+                      ),
+                     "question": question
+                      },
+                     headers={
+                    "Authorization": f"Bearer {st.session_state.token}"
+                        },
+                        )
 
                 except requests.exceptions.RequestException as e:
 
@@ -313,7 +470,10 @@ if st.button("View History"):
         try:
 
             response = requests.get(
-                f"{API_URL}/history"
+            f"{API_URL}/history",
+            headers={
+            "Authorization": f"Bearer {st.session_state.token}"
+            },
             )
 
         except requests.exceptions.RequestException as e:
@@ -426,8 +586,11 @@ if "history" in st.session_state:
                     try:
 
                         delete_response = requests.delete(
-                            f"{API_URL}/documents/"
-                            f"{document_id}"
+                        f"{API_URL}/documents/"
+                        f"{document_id}",
+                         headers={
+                        "Authorization": f"Bearer {st.session_state.token}"
+                        },
                         )
 
                     except requests.exceptions.RequestException as e:

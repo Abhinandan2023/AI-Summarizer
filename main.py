@@ -12,6 +12,11 @@ import chromadb
 from langchain_mistralai import MistralAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import HTTPException, status
+from datetime import timedelta
 
 load_dotenv()
 
@@ -26,6 +31,18 @@ CHROMA_API_KEY = os.getenv("CHROMA_API_KEY")
 CHROMA_TENANT = os.getenv("CHROMA_TENANT")
 CHROMA_DATABASE = os.getenv("CHROMA_DATABASE")
 CHROMA_HOST = os.getenv("CHROMA_HOST")
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = "HS256"
+
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+)
+
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/login"
+)
 
 chroma_client = chromadb.CloudClient( 
     api_key=CHROMA_API_KEY,
@@ -51,8 +68,39 @@ DATABASE_URL = URL.create(
 class Base(DeclarativeBase):
     pass
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    email: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+    )
+
+    password_hash: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
 class Summary(Base):
     __tablename__="summaries"
+
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
 
     id:Mapped[int]=mapped_column(
         Integer,
@@ -113,6 +161,10 @@ class Document(Base):
         Integer,
         primary_key=True,
         autoincrement=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+    Integer,
+    nullable=False,
     )
     filename: Mapped[str]=mapped_column(
         String(500),
@@ -184,6 +236,10 @@ class QuestionRequest(BaseModel):
 class PDFSummaryRequest(BaseModel):
     document_id: str
 
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+
 engine=create_engine(DATABASE_URL) 
 
 Base.metadata.create_all(bind=engine)
@@ -201,6 +257,42 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+        )
+
+        user_id = payload.get("sub")
+
+        if user_id is None:
+            raise credentials_exception
+
+        user = (
+            db.query(User)
+            .filter(User.id == int(user_id))
+            .first()
+        )
+
+        if user is None:
+            raise credentials_exception
+
+        return user
+
+    except (JWTError, ValueError):
+        raise credentials_exception
 
 def extract_pdf_text(file):
     document = pymupdf.open(stream=file, filetype="pdf")
@@ -256,16 +348,82 @@ def health():
         "database":"disconnected",
         "error": str(e)
         }
+    
+@app.post("/signup")
+def signup(
+    request: SignupRequest,
+    db: Session = Depends(get_db),
+):
+    existing_user = (
+        db.query(User)
+        .filter(User.email == request.email)
+        .first()
+    )
 
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered",
+        )
+
+    password_hash = pwd_context.hash(request.password)
+
+    user = User(
+        email=request.email,
+        password_hash=password_hash,
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": "User created successfully",
+        "user_id": user.id,
+        "email": user.email,
+    }
+
+@app.post("/login")
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db),):
+    user = (
+        db.query(User)
+        .filter(User.email == form_data.username)
+        .first()
+    )
+
+    if not user or not pwd_context.verify(
+        form_data.password,
+        user.password_hash
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+        )
+
+    token_data = {
+        "sub": str(user.id)
+    }
+
+    access_token = jwt.encode(
+        token_data,
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
     
 @app.get("/history")
-def get_history(db: Session = Depends(get_db)):
+def get_history(db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),):
 
     documents = (
-        db.query(Document)
-        .order_by(Document.created_at.desc())
-        .all()
-    )
+    db.query(Document)
+    .filter(Document.user_id == current_user.id)
+    .order_by(Document.created_at.desc())
+    .all())
 
     history = []
 
@@ -298,7 +456,8 @@ def get_history(db: Session = Depends(get_db)):
     return history
 
 @app.post("/summarize/text")
-def summarize_text(request: SummarizeRequest, db: Session=Depends(get_db)):
+def summarize_text(request: SummarizeRequest, db: Session=Depends(get_db),
+                   current_user: User = Depends(get_current_user),):
     response=llm.invoke(
          f"""
        Summarize the following text clearly and concisely.
@@ -312,6 +471,7 @@ def summarize_text(request: SummarizeRequest, db: Session=Depends(get_db)):
     usage= response.usage_metadata
 
     summary=Summary(
+        user_id=current_user.id,
         source_type="text",
         source_name="Direct Text Input",
         summary=response.content,
@@ -336,7 +496,7 @@ def summarize_text(request: SummarizeRequest, db: Session=Depends(get_db)):
 @app.post("/upload/pdf")
 async def upload_pdf(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
     pdf_bytes = await file.read()
 
@@ -345,6 +505,7 @@ async def upload_pdf(
     chunks = text_splitter.split_text(text)
 
     document = Document(
+        user_id=current_user.id,
         filename=file.filename,
         page_count=page_count,
         chunk_count=len(chunks),
@@ -379,7 +540,24 @@ async def upload_pdf(
     }
     
 @app.post("/ask")
-def ask_question(request: QuestionRequest, db: Session=Depends(get_db)):
+def ask_question(
+    request: QuestionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),):
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == int(request.document_id),
+            Document.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if document is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
 
     vectorstore = get_vectorstore(request.document_id)
     relevant_chunks= vectorstore.similarity_search(
@@ -431,12 +609,15 @@ def ask_question(request: QuestionRequest, db: Session=Depends(get_db)):
     }
 
 @app.post("/summarize/pdf")
-def summarize_pdf(request: PDFSummaryRequest, db: Session = Depends(get_db)):
+def summarize_pdf(request: PDFSummaryRequest, db: Session = Depends(get_db), 
+                  current_user: User = Depends(get_current_user),):
     document = (
-        db.query(Document)
-        .filter(Document.id == int(request.document_id))
-        .first()
+    db.query(Document)
+    .filter(
+        Document.id == int(request.document_id),
+        Document.user_id == current_user.id,
     )
+    .first())
 
     if not document:
         return {
@@ -572,12 +753,16 @@ def summarize_pdf(request: PDFSummaryRequest, db: Session = Depends(get_db)):
     }
 
 @app.delete("/documents/{document_id}")
-def delete_document(document_id: int, db: Session = Depends(get_db)):
+def delete_document(document_id: int, db: Session = Depends(get_db),
+                    current_user: User = Depends(get_current_user),):
     document = (
-        db.query(Document)
-        .filter(Document.id == document_id)
-        .first()
+    db.query(Document)
+    .filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id,
     )
+    .first()
+)
 
     if not document:
         return {
